@@ -13,6 +13,8 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
+    environment: cloudy-runner
+
 
     permissions:
       contents: read
