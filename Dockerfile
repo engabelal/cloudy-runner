@@ -30,7 +30,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
  && rm -rf /var/lib/apt/lists/*
 
 # ------------------------------------------------------------
-# 2. Docker CLI + Buildx (official Docker repo)
+# 2. Docker CLI + Buildx
 # ------------------------------------------------------------
 RUN install -m 0755 -d /etc/apt/keyrings \
  && curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
@@ -45,7 +45,7 @@ RUN install -m 0755 -d /etc/apt/keyrings \
  && rm -rf /var/lib/apt/lists/*
 
 # ------------------------------------------------------------
-# 3. Node.js 20 LTS (official NodeSource)
+# 3. Node.js 20 LTS
 # ------------------------------------------------------------
 RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
  && apt-get install -y nodejs \
@@ -53,22 +53,28 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
  && rm -rf /var/lib/apt/lists/*
 
 # ------------------------------------------------------------
-# 4. AWS CLI v2 (latest. multi-arch)
+# 4. AWS CLI v2 (FIXED multi-arch)
 # ------------------------------------------------------------
-RUN ARCH="$(dpkg --print-architecture)" \
- && curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-${ARCH}.zip" \
-    -o awscliv2.zip \
- && unzip awscliv2.zip \
- && ./aws/install \
- && rm -rf aws awscliv2.zip
+RUN set -eux; \
+    ARCH="$(dpkg --print-architecture)"; \
+    case "$ARCH" in \
+      amd64) AWS_ARCH="x86_64" ;; \
+      arm64) AWS_ARCH="aarch64" ;; \
+      *) echo "Unsupported architecture: $ARCH" && exit 1 ;; \
+    esac; \
+    curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-${AWS_ARCH}.zip" \
+      -o awscliv2.zip; \
+    unzip awscliv2.zip; \
+    ./aws/install; \
+    rm -rf aws awscliv2.zip
 
 # ------------------------------------------------------------
-# 5. Azure CLI (official Microsoft installer)
+# 5. Azure CLI
 # ------------------------------------------------------------
 RUN curl -fsSL https://aka.ms/InstallAzureCLIDeb | bash
 
 # ------------------------------------------------------------
-# 6. Terraform (official HashiCorp repo. latest stable)
+# 6. Terraform (official repo)
 # ------------------------------------------------------------
 RUN wget -O- https://apt.releases.hashicorp.com/gpg \
     | gpg --dearmor \
@@ -82,7 +88,7 @@ RUN wget -O- https://apt.releases.hashicorp.com/gpg \
  && rm -rf /var/lib/apt/lists/*
 
 # ------------------------------------------------------------
-# 7. Python tools (latest from PyPI)
+# 7. Python tools
 # ------------------------------------------------------------
 RUN pip3 install --no-cache-dir --break-system-packages \
     ansible \
@@ -97,20 +103,20 @@ RUN ARCH="$(dpkg --print-architecture)" \
  && chmod +x /usr/local/bin/kubectl
 
 # ------------------------------------------------------------
-# 9. Helm (latest stable. official installer)
+# 9. Helm (latest stable)
 # ------------------------------------------------------------
 RUN curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 \
     | bash
 
 # ------------------------------------------------------------
-# 10. Kustomize (latest stable)
+# 10. Kustomize
 # ------------------------------------------------------------
 RUN curl -fsSL https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh \
     | bash \
  && mv kustomize /usr/local/bin/
 
 # ------------------------------------------------------------
-# 11. yq (latest stable. multi-arch)
+# 11. yq (multi-arch)
 # ------------------------------------------------------------
 RUN ARCH="$(dpkg --print-architecture)" \
  && curl -fsSL \
