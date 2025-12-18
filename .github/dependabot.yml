@@ -1,0 +1,8 @@
+version: 2
+
+updates:
+  # Monitor Dockerfile base image for security and version updates
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
