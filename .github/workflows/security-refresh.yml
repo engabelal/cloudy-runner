@@ -1,0 +1,36 @@
+name: CI Runner Security Refresh
+
+on:
+  schedule:
+    - cron: "0 3 * * 0"   # Weekly. Sunday 03:00 UTC
+  workflow_dispatch:
+
+jobs:
+  rebuild:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Full rebuild without cache
+        run: |
+          set -a
+          source ./versions.env
+          set +a
+
+          docker build \
+            --no-cache \
+            --pull \
+            --build-arg NODE_VERSION \
+            --build-arg AWSCLI_VERSION \
+            --build-arg TERRAFORM_VERSION \
+            --build-arg KUBECTL_VERSION \
+            --build-arg HELM_VERSION \
+            --build-arg KUSTOMIZE_VERSION \
+            --build-arg YQ_VERSION \
+            --build-arg ANSIBLE_VERSION \
+            -t cloudycode/ci-runner:security .
