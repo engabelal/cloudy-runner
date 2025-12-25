@@ -1,0 +1,50 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# CI/CD
+.github
+
+# Documentation
+*.md
+!versions.env
+LICENSE
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+.DS_Store
+
+# AI Assistants
+.claude
+.kiro
+.cursor
+.copilot
+.aider
+.continue
+
+# Build artifacts
+*.log
+tmp/
+temp/
+.cache/
+
+# Test files
+test/
+tests/
+*.test.js
+*.spec.js
+
+# Example files
+examples/
+docs/
+
+# OS files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/

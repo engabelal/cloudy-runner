@@ -258,6 +258,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # Ensure labels exist first
+          gh label create "security-refresh" --description "Weekly security refresh" --color "d73a4a" --force || true
+          gh label create "automated" --description "Automated workflow" --color "ededed" --force || true
+
           # Check if an open security issue exists
           ISSUE_NUMBER=$(gh issue list \
             --label "security-refresh" \

@@ -172,7 +172,13 @@ jobs:
 
       - name: Create or update issue
         if: steps.compare.outputs.updates_available == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
+          # Ensure labels exist first
+          gh label create "version-update" --description "Tool version updates available" --color "0366d6" --force || true
+          gh label create "dependencies" --description "Dependency updates" --color "0366d6" --force || true
+
           # Check if an open issue already exists
           ISSUE_NUMBER=$(gh issue list \
             --label "version-update" \
