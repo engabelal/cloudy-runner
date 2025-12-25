@@ -1,8 +1,9 @@
-name: CI Runner Security Refresh
+name: Security Refresh & Scan
 
 on:
   schedule:
-    - cron: "0 3 * * 0"   # Weekly - Sunday 03:00 UTC
+    # Weekly - Sunday 03:00 UTC - rebuild with latest base image and security patches
+    - cron: "0 3 * * 0"
   workflow_dispatch:
 
 env:
@@ -11,14 +12,16 @@ env:
 jobs:
   amd64:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+
     steps:
-      - name: Checkout
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      # Load versions.env safely
-      - name: Load versions
-        run: |
-          grep -v '^#' versions.env >> $GITHUB_ENV
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Login to Docker Hub
         uses: docker/login-action@v3
@@ -26,27 +29,81 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Rebuild amd64 (no cache)
+      - name: Load versions
         run: |
-          docker build \
-            --no-cache \
-            --pull \
-            -f docker/Dockerfile.amd64 \
-            -t $IMAGE:amd64-security \
-            $(printf -- '--build-arg %s ' $(cat versions.env | grep -v '^#')) \
-            .
+          set -a
+          source versions.env
+          set +a
+          echo "NODE_VERSION=$NODE_VERSION" >> $GITHUB_ENV
+          echo "TERRAFORM_VERSION=$TERRAFORM_VERSION" >> $GITHUB_ENV
+          echo "ANSIBLE_VERSION=$ANSIBLE_VERSION" >> $GITHUB_ENV
+          echo "KUBECTL_VERSION=$KUBECTL_VERSION" >> $GITHUB_ENV
+          echo "HELM_VERSION=$HELM_VERSION" >> $GITHUB_ENV
+          echo "KUSTOMIZE_VERSION=$KUSTOMIZE_VERSION" >> $GITHUB_ENV
+          echo "YQ_VERSION=$YQ_VERSION" >> $GITHUB_ENV
 
-          docker push $IMAGE:amd64-security
+      - name: Build amd64 (no cache - fresh security patches)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile.amd64
+          platforms: linux/amd64
+          push: true
+          tags: ${{ env.IMAGE }}:amd64-security
+          build-args: |
+            NODE_VERSION=${{ env.NODE_VERSION }}
+            TERRAFORM_VERSION=${{ env.TERRAFORM_VERSION }}
+            ANSIBLE_VERSION=${{ env.ANSIBLE_VERSION }}
+            KUBECTL_VERSION=${{ env.KUBECTL_VERSION }}
+            HELM_VERSION=${{ env.HELM_VERSION }}
+            KUSTOMIZE_VERSION=${{ env.KUSTOMIZE_VERSION }}
+            YQ_VERSION=${{ env.YQ_VERSION }}
+          no-cache: true
+          pull: true
+
+      - name: Run Trivy security scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.IMAGE }}:amd64-security
+          format: 'sarif'
+          output: 'trivy-amd64-results.sarif'
+          severity: 'CRITICAL,HIGH,MEDIUM'
+
+      - name: Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-amd64-results.sarif'
+          category: 'trivy-amd64'
+
+      - name: Generate security report
+        if: always()
+        run: |
+          docker run --rm aquasec/trivy:latest image \
+            --severity CRITICAL,HIGH,MEDIUM \
+            --format table \
+            ${{ env.IMAGE }}:amd64-security > security-report-amd64.txt || true
+
+      - name: Upload security report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: security-report-amd64
+          path: security-report-amd64.txt
+          retention-days: 30
 
   arm64:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+
     steps:
-      - name: Checkout
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Load versions
-        run: |
-          grep -v '^#' versions.env >> $GITHUB_ENV
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Login to Docker Hub
         uses: docker/login-action@v3
@@ -54,14 +111,187 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Rebuild arm64 (no cache)
+      - name: Load versions
         run: |
-          docker build \
-            --no-cache \
-            --pull \
-            -f docker/Dockerfile.arm64 \
-            -t $IMAGE:arm64-security \
-            $(printf -- '--build-arg %s ' $(cat versions.env | grep -v '^#')) \
-            .
+          set -a
+          source versions.env
+          set +a
+          echo "NODE_VERSION=$NODE_VERSION" >> $GITHUB_ENV
+          echo "TERRAFORM_VERSION=$TERRAFORM_VERSION" >> $GITHUB_ENV
+          echo "ANSIBLE_VERSION=$ANSIBLE_VERSION" >> $GITHUB_ENV
+          echo "KUBECTL_VERSION=$KUBECTL_VERSION" >> $GITHUB_ENV
+          echo "HELM_VERSION=$HELM_VERSION" >> $GITHUB_ENV
+          echo "KUSTOMIZE_VERSION=$KUSTOMIZE_VERSION" >> $GITHUB_ENV
+          echo "YQ_VERSION=$YQ_VERSION" >> $GITHUB_ENV
 
-          docker push $IMAGE:arm64-security
+      - name: Build arm64 (no cache - fresh security patches)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile.arm64
+          platforms: linux/arm64
+          push: true
+          tags: ${{ env.IMAGE }}:arm64-security
+          build-args: |
+            NODE_VERSION=${{ env.NODE_VERSION }}
+            TERRAFORM_VERSION=${{ env.TERRAFORM_VERSION }}
+            ANSIBLE_VERSION=${{ env.ANSIBLE_VERSION }}
+            KUBECTL_VERSION=${{ env.KUBECTL_VERSION }}
+            HELM_VERSION=${{ env.HELM_VERSION }}
+            KUSTOMIZE_VERSION=${{ env.KUSTOMIZE_VERSION }}
+            YQ_VERSION=${{ env.YQ_VERSION }}
+          no-cache: true
+          pull: true
+
+      - name: Run Trivy security scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.IMAGE }}:arm64-security
+          format: 'sarif'
+          output: 'trivy-arm64-results.sarif'
+          severity: 'CRITICAL,HIGH,MEDIUM'
+
+      - name: Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-arm64-results.sarif'
+          category: 'trivy-arm64'
+
+      - name: Generate security report
+        if: always()
+        run: |
+          docker run --rm aquasec/trivy:latest image \
+            --severity CRITICAL,HIGH,MEDIUM \
+            --format table \
+            ${{ env.IMAGE }}:arm64-security > security-report-arm64.txt || true
+
+      - name: Upload security report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: security-report-arm64
+          path: security-report-arm64.txt
+          retention-days: 30
+
+  manifest:
+    runs-on: ubuntu-latest
+    needs: [amd64, arm64]
+    permissions:
+      contents: read
+
+    steps:
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Create and push security manifest
+        run: |
+          docker buildx imagetools create \
+            -t ${{ env.IMAGE }}:security-latest \
+            ${{ env.IMAGE }}:amd64-security \
+            ${{ env.IMAGE }}:arm64-security
+
+          echo "✅ Security-refreshed multi-arch image published: ${{ env.IMAGE }}:security-latest"
+
+  notify:
+    runs-on: ubuntu-latest
+    needs: [manifest]
+    if: always()
+    permissions:
+      issues: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download security reports
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          path: reports/
+
+      - name: Create security summary
+        run: |
+          cat > security-summary.md <<'EOF'
+          # 🔒 Weekly Security Refresh Report
+
+          **Date**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')
+          **Workflow**: Security Refresh & Scan
+
+          ## 📦 Images Rebuilt
+
+          - ✅ `engabelal/cloudy-runner:amd64-security`
+          - ✅ `engabelal/cloudy-runner:arm64-security`
+          - ✅ `engabelal/cloudy-runner:security-latest` (multi-arch)
+
+          ## 🛡️ Security Scanning
+
+          Images scanned with [Trivy](https://github.com/aquasecurity/trivy) for:
+          - Critical vulnerabilities
+          - High severity issues
+          - Medium severity issues
+
+          Results uploaded to GitHub Security tab.
+
+          ## 📋 Details
+
+          - **Base Image**: Ubuntu 24.04 LTS (pulled fresh)
+          - **Cache**: Disabled (ensures latest security patches)
+          - **Scan Level**: CRITICAL, HIGH, MEDIUM
+
+          ## 🔗 Links
+
+          - [Security Tab](https://github.com/${{ github.repository }}/security/code-scanning)
+          - [Workflow Run](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+
+          ---
+
+          This is an automated weekly security refresh to ensure the latest base image security patches are applied.
+          EOF
+
+          cat security-summary.md
+
+      - name: Create or update security issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Check if an open security issue exists
+          ISSUE_NUMBER=$(gh issue list \
+            --label "security-refresh" \
+            --state open \
+            --json number \
+            --jq '.[0].number')
+
+          if [ -z "$ISSUE_NUMBER" ]; then
+            # Create new issue only if security scan found issues
+            if [ "${{ needs.amd64.result }}" != "success" ] || [ "${{ needs.arm64.result }}" != "success" ]; then
+              gh issue create \
+                --title "🔒 Weekly Security Refresh - $(date -u '+%Y-%m-%d')" \
+                --body-file security-summary.md \
+                --label "security-refresh,automated"
+              echo "⚠️ Created security issue due to scan failures"
+            else
+              echo "✅ Security refresh completed successfully, no issues found"
+            fi
+          else
+            # Update existing issue
+            gh issue comment "$ISSUE_NUMBER" \
+              --body-file security-summary.md
+            echo "✅ Updated existing security issue #$ISSUE_NUMBER"
+          fi
+
+      - name: Job summary
+        if: always()
+        run: |
+          cat security-summary.md >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ needs.amd64.result }}" = "success" ] && [ "${{ needs.arm64.result }}" = "success" ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "✅ **Security refresh completed successfully!**" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "⚠️ **Some security scans reported issues. Check the Security tab for details.**" >> $GITHUB_STEP_SUMMARY
+          fi

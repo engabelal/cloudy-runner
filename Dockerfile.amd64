@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.4
 FROM ubuntu:24.04
 
 # Build arguments
@@ -8,6 +9,7 @@ ARG KUBECTL_VERSION
 ARG HELM_VERSION
 ARG KUSTOMIZE_VERSION
 ARG YQ_VERSION
+ARG BUILDKIT_CACHE_MOUNT_NS
 
 # OCI Labels
 LABEL org.opencontainers.image.title="Cloudy Runner" \
@@ -17,80 +19,85 @@ LABEL org.opencontainers.image.title="Cloudy Runner" \
       org.opencontainers.image.licenses="MIT" \
       maintainer="Ahmed Belal <eng.abelal@gmail.com>"
 
-ENV DEBIAN_FRONTEND=noninteractive
-ENV TZ=Etc/UTC
+ENV DEBIAN_FRONTEND=noninteractive \
+    TZ=Etc/UTC \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# Base utilities - cache only the download cache, not the package list
+# This ensures apt-get update always runs fresh
+RUN rm -f /etc/apt/apt.conf.d/docker-clean && \
+    echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache
+
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates curl wget git jq unzip zip gnupg \
-    make build-essential python3 python3-venv python3-pip xz-utils \
-    && rm -rf /var/lib/apt/lists/*
+    make build-essential python3 python3-venv python3-pip xz-utils && \
+    rm -rf /var/lib/apt/lists/*
 
-# Node (amd64 -> x64)
-RUN curl -fsSL https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz \
- | tar -xJ -C /usr/local --strip-components=1 \
- && npm install -g yarn pnpm
+# Download stage - parallel downloads for speed
+# Using tmpfs so downloads don't persist in cache
+RUN --mount=type=tmpfs,target=/downloads \
+    cd /downloads && \
+    # Node.js (amd64 -> x64)
+    curl -fsSL -o node.tar.xz https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz & \
+    # AWS CLI (x86_64)
+    curl -fsSL -o awscliv2.zip https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip & \
+    # Terraform
+    curl -fsSL -o terraform.zip https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip & \
+    # kubectl
+    curl -fsSL -o kubectl https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl & \
+    # Helm
+    curl -fsSL -o helm.tar.gz https://get.helm.sh/helm-${HELM_VERSION}-linux-amd64.tar.gz & \
+    # Kustomize
+    KUSTOMIZE_VER=$(echo ${KUSTOMIZE_VERSION} | cut -d'/' -f2) && \
+    curl -fsSL -o kustomize.tar.gz https://github.com/kubernetes-sigs/kustomize/releases/download/${KUSTOMIZE_VERSION}/kustomize_${KUSTOMIZE_VER}_linux_amd64.tar.gz & \
+    # yq
+    curl -fsSL -o yq https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64 & \
+    wait && \
+    # Install Node.js
+    tar -xJ -f node.tar.xz -C /usr/local --strip-components=1 && \
+    # Install AWS CLI
+    unzip -q awscliv2.zip && ./aws/install && \
+    # Install Terraform
+    unzip -q terraform.zip -d /usr/local/bin && \
+    # Install kubectl
+    install -m 0755 kubectl /usr/local/bin/kubectl && \
+    # Install Helm
+    tar -xzf helm.tar.gz && mv linux-amd64/helm /usr/local/bin/helm && \
+    # Install Kustomize
+    tar -xzf kustomize.tar.gz && install -m 0755 kustomize /usr/local/bin/kustomize && \
+    # Install yq
+    install -m 0755 yq /usr/local/bin/yq
 
-# AWS CLI (x86_64)
-RUN curl -fsSL https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip \
- -o awscliv2.zip \
- && unzip awscliv2.zip \
- && ./aws/install \
- && rm -rf aws awscliv2.zip
+# Node.js global packages with cache mount
+# Cache speeds up npm but doesn't affect package versions
+RUN --mount=type=cache,target=/root/.npm,sharing=locked \
+    npm install -g yarn@latest pnpm@latest
 
-# Terraform
-RUN curl -fsSL \
- https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip \
- -o tf.zip \
- && unzip tf.zip -d /usr/local/bin \
- && rm tf.zip
-
-# kubectl
-RUN curl -fsSL \
- https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl \
- -o /usr/local/bin/kubectl \
- && chmod +x /usr/local/bin/kubectl
-
-# Helm
-RUN curl -fsSL \
- https://get.helm.sh/helm-${HELM_VERSION}-linux-amd64.tar.gz \
- | tar -xz \
- && mv linux-amd64/helm /usr/local/bin/helm \
- && rm -rf linux-amd64
-
-# Kustomize
-RUN KUSTOMIZE_VER=$(echo ${KUSTOMIZE_VERSION} | cut -d'/' -f2) \
- && curl -fsSL \
- https://github.com/kubernetes-sigs/kustomize/releases/download/${KUSTOMIZE_VERSION}/kustomize_${KUSTOMIZE_VER}_linux_amd64.tar.gz \
- | tar -xz \
- && mv kustomize /usr/local/bin/kustomize
-
-# yq
-RUN curl -fsSL \
- https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64 \
- -o /usr/local/bin/yq \
- && chmod +x /usr/local/bin/yq
-
-# Ansible
-RUN python3 -m venv /opt/ansible \
- && /opt/ansible/bin/pip install --no-cache-dir \
-    ansible==${ANSIBLE_VERSION} passlib
+# Ansible with pip cache mount
+# Cache speeds up pip but doesn't affect package versions
+RUN --mount=type=cache,target=/root/.cache/pip,sharing=locked \
+    python3 -m venv /opt/ansible && \
+    /opt/ansible/bin/pip install --upgrade pip && \
+    /opt/ansible/bin/pip install ansible==${ANSIBLE_VERSION} passlib
 
 ENV PATH="/opt/ansible/bin:${PATH}"
 
 # Verify installations and create version info
-RUN echo "=== Installed Tool Versions ===" > /etc/tool-versions.txt \
- && echo "Node.js: $(node --version)" >> /etc/tool-versions.txt \
- && echo "npm: $(npm --version)" >> /etc/tool-versions.txt \
- && echo "yarn: $(yarn --version)" >> /etc/tool-versions.txt \
- && echo "pnpm: $(pnpm --version)" >> /etc/tool-versions.txt \
- && echo "AWS CLI: $(aws --version)" >> /etc/tool-versions.txt \
- && echo "Terraform: $(terraform version -json | jq -r .terraform_version)" >> /etc/tool-versions.txt \
- && echo "kubectl: $(kubectl version --client -o json | jq -r .clientVersion.gitVersion)" >> /etc/tool-versions.txt \
- && echo "Helm: $(helm version --short)" >> /etc/tool-versions.txt \
- && echo "Kustomize: $(kustomize version --short)" >> /etc/tool-versions.txt \
- && echo "yq: $(yq --version)" >> /etc/tool-versions.txt \
- && echo "Ansible: $(ansible --version | head -n1)" >> /etc/tool-versions.txt \
- && cat /etc/tool-versions.txt
+RUN echo "=== Installed Tool Versions ===" > /etc/tool-versions.txt && \
+    echo "Node.js: $(node --version)" >> /etc/tool-versions.txt && \
+    echo "npm: $(npm --version)" >> /etc/tool-versions.txt && \
+    echo "yarn: $(yarn --version)" >> /etc/tool-versions.txt && \
+    echo "pnpm: $(pnpm --version)" >> /etc/tool-versions.txt && \
+    echo "AWS CLI: $(aws --version)" >> /etc/tool-versions.txt && \
+    echo "Terraform: $(terraform version -json | jq -r .terraform_version)" >> /etc/tool-versions.txt && \
+    echo "kubectl: $(kubectl version --client -o json | jq -r .clientVersion.gitVersion)" >> /etc/tool-versions.txt && \
+    echo "Helm: $(helm version --short)" >> /etc/tool-versions.txt && \
+    echo "Kustomize: $(kustomize version --short)" >> /etc/tool-versions.txt && \
+    echo "yq: $(yq --version)" >> /etc/tool-versions.txt && \
+    echo "Ansible: $(ansible --version | head -n1)" >> /etc/tool-versions.txt && \
+    cat /etc/tool-versions.txt
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
