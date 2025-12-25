@@ -2,35 +2,66 @@ name: CI Runner Security Refresh
 
 on:
   schedule:
-    - cron: "0 3 * * 0"   # Weekly. Sunday 03:00 UTC
+    - cron: "0 3 * * 0"   # Weekly - Sunday 03:00 UTC
   workflow_dispatch:
 
-jobs:
-  rebuild:
-    runs-on: ubuntu-latest
+env:
+  IMAGE: engabelal/cloudy-runner
 
+jobs:
+  amd64:
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Full rebuild without cache
+      # Load versions.env safely
+      - name: Load versions
         run: |
-          set -a
-          source ./versions.env
-          set +a
+          grep -v '^#' versions.env >> $GITHUB_ENV
 
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Rebuild amd64 (no cache)
+        run: |
           docker build \
             --no-cache \
             --pull \
-            --build-arg NODE_VERSION \
-            --build-arg AWSCLI_VERSION \
-            --build-arg TERRAFORM_VERSION \
-            --build-arg KUBECTL_VERSION \
-            --build-arg HELM_VERSION \
-            --build-arg KUSTOMIZE_VERSION \
-            --build-arg YQ_VERSION \
-            --build-arg ANSIBLE_VERSION \
-            -t cloudycode/ci-runner:security .
+            -f docker/Dockerfile.amd64 \
+            -t $IMAGE:amd64-security \
+            $(printf -- '--build-arg %s ' $(cat versions.env | grep -v '^#')) \
+            .
+
+          docker push $IMAGE:amd64-security
+
+  arm64:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Load versions
+        run: |
+          grep -v '^#' versions.env >> $GITHUB_ENV
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Rebuild arm64 (no cache)
+        run: |
+          docker build \
+            --no-cache \
+            --pull \
+            -f docker/Dockerfile.arm64 \
+            -t $IMAGE:arm64-security \
+            $(printf -- '--build-arg %s ' $(cat versions.env | grep -v '^#')) \
+            .
+
+          docker push $IMAGE:arm64-security
