@@ -1,7 +1,7 @@
 # ============================================================
 # CI Runner Image
-# Versions are injected via build arguments
-# Multi-arch safe (amd64 / arm64)
+# Fully multi-arch safe (amd64 / arm64)
+# All versions injected via build args
 # ============================================================
 FROM ubuntu:24.04
 
@@ -20,7 +20,7 @@ ARG KUSTOMIZE_VERSION
 ARG YQ_VERSION
 ARG ANSIBLE_VERSION
 
-# Provided automatically by Buildx
+# Provided automatically by Docker Buildx
 ARG TARGETARCH
 
 # ------------------------------------------------------------
@@ -60,10 +60,15 @@ RUN install -m 0755 -d /etc/apt/keyrings \
     && rm -rf /var/lib/apt/lists/*
 
 # ------------------------------------------------------------
-# Node.js (multi-arch)
+# Node.js (multi-arch with correct naming)
+# Docker: amd64 | arm64
+# Node:   x64   | arm64
 # ------------------------------------------------------------
-RUN curl -fsSL \
-    https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${TARGETARCH}.tar.xz \
+RUN if [ "${TARGETARCH}" = "amd64" ]; then NODE_ARCH="x64"; \
+    elif [ "${TARGETARCH}" = "arm64" ]; then NODE_ARCH="arm64"; \
+    else echo "Unsupported architecture: ${TARGETARCH}" && exit 1; fi \
+    && curl -fsSL \
+       https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${NODE_ARCH}.tar.xz \
     | tar -xJ -C /usr/local --strip-components=1 \
     && npm install -g yarn pnpm
 
@@ -87,35 +92,41 @@ RUN curl -fsSL \
     && rm terraform.zip
 
 # ------------------------------------------------------------
-# Kubernetes tools
-# ------------------------------------------------------------
 # kubectl (already multi-arch)
+# ------------------------------------------------------------
 RUN curl -fsSL \
     https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${TARGETARCH}/kubectl \
     -o /usr/local/bin/kubectl \
     && chmod +x /usr/local/bin/kubectl
 
-# helm (multi-arch)
+# ------------------------------------------------------------
+# Helm (multi-arch)
+# ------------------------------------------------------------
 RUN curl -fsSL \
     https://get.helm.sh/helm-${HELM_VERSION}-linux-${TARGETARCH}.tar.gz \
     | tar -xz \
     && mv linux-${TARGETARCH}/helm /usr/local/bin/helm \
     && rm -rf linux-${TARGETARCH}
 
-# kustomize (FIXED: multi-arch safe)
+# ------------------------------------------------------------
+# Kustomize (multi-arch, correct tag format)
+# Example tag: kustomize/v5.4.2
+# ------------------------------------------------------------
 RUN curl -fsSL \
     https://github.com/kubernetes-sigs/kustomize/releases/download/${KUSTOMIZE_VERSION}/kustomize_linux_${TARGETARCH}.tar.gz \
     | tar -xz \
     && mv kustomize /usr/local/bin/kustomize
 
+# ------------------------------------------------------------
 # yq (multi-arch)
+# ------------------------------------------------------------
 RUN curl -fsSL \
     https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_${TARGETARCH} \
     -o /usr/local/bin/yq \
     && chmod +x /usr/local/bin/yq
 
 # ------------------------------------------------------------
-# Ansible (isolated venv)
+# Ansible (isolated venv, no system Python pollution)
 # ------------------------------------------------------------
 RUN python3 -m venv /opt/ansible \
     && /opt/ansible/bin/pip install --no-cache-dir \
