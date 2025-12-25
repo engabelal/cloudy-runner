@@ -179,18 +179,18 @@ jobs:
 
 **Result**: Fewer breaking changes, predictable behavior
 
-### 2. **Performance Through Parallelization**
+### 2. **Reliability Over Raw Speed**
 
-**Download Stage** (Dockerfile lines 40-65):
+**Download Stage** (Dockerfile lines 38-64):
 ```dockerfile
-# All downloads happen simultaneously
-curl -o node.tar.xz https://... &
-curl -o terraform.zip https://... &
-curl -o kubectl https://... &
-wait  # Wait for all to complete
+# Sequential downloads for reliability
+curl -fsSL -o node.tar.xz https://... &&
+curl -fsSL -o terraform.zip https://... &&
+curl -fsSL -o kubectl https://... &&
+# Installation follows...
 ```
 
-**Impact**: 3-5x faster than sequential downloads
+**Why sequential?** Parallel downloads with background jobs (`&`) can cause race conditions in some CI/CD environments. Sequential downloads are slightly slower but much more reliable.
 
 ### 3. **Smart Caching Without Staleness**
 

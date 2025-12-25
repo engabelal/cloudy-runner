@@ -4,18 +4,21 @@ This document explains the build optimizations implemented and how caching works
 
 ## 🚀 Speed Optimizations
 
-### 1. **Parallel Downloads** (Dockerfile.amd64:34-65, Dockerfile.arm64:34-65)
+### 1. **Sequential Downloads for Reliability** (Dockerfile.amd64:38-64, Dockerfile.arm64:38-64)
 
-All tool downloads happen in parallel using background jobs:
+Tool downloads happen sequentially for maximum reliability:
 
 ```dockerfile
-curl -fsSL -o node.tar.xz https://... &
-curl -fsSL -o terraform.zip https://... &
-curl -fsSL -o kubectl https://... &
-wait  # Wait for all downloads to complete
+# Extract version variable first
+KUSTOMIZE_VER=$(echo ${KUSTOMIZE_VERSION} | cut -d'/' -f2) &&
+# Downloads in sequence
+curl -fsSL -o node.tar.xz https://... &&
+curl -fsSL -o terraform.zip https://... &&
+curl -fsSL -o kubectl https://... &&
+# Then install all tools
 ```
 
-**Speed gain**: ~3-5x faster than sequential downloads
+**Why not parallel?** Background jobs (`&`) with `wait` can cause race conditions in some CI/CD environments (especially with tmpfs mounts and BuildKit). Sequential downloads are slightly slower but much more reliable.
 
 ### 2. **BuildKit Cache Mounts**
 
