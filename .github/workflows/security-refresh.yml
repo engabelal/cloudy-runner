@@ -60,6 +60,7 @@ jobs:
             YQ_VERSION=${{ env.YQ_VERSION }}
           no-cache: true
           pull: true
+          load: true
 
       - name: Run Trivy security scan
         uses: aquasecurity/trivy-action@master
@@ -142,6 +143,7 @@ jobs:
             YQ_VERSION=${{ env.YQ_VERSION }}
           no-cache: true
           pull: true
+          load: true
 
       - name: Run Trivy security scan
         uses: aquasecurity/trivy-action@master
