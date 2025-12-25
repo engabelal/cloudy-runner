@@ -60,7 +60,7 @@ jobs:
           cache-to: type=gha,mode=max
 
   arm64:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm  # Native ARM runner - no QEMU emulation!
 
     steps:
       - uses: actions/checkout@v4

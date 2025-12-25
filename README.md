@@ -5,6 +5,9 @@
 [![Docker Hub](https://img.shields.io/docker/v/engabelal/cloudy-runner?label=Docker%20Hub&sort=semver)](https://hub.docker.com/r/engabelal/cloudy-runner)
 [![Docker Image Size](https://img.shields.io/docker/image-size/engabelal/cloudy-runner/latest)](https://hub.docker.com/r/engabelal/cloudy-runner)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Build & Push](https://github.com/engabelal/cloudy-runner/actions/workflows/docker-build.yml/badge.svg)](https://github.com/engabelal/cloudy-runner/actions/workflows/docker-build.yml)
+[![Security Refresh](https://github.com/engabelal/cloudy-runner/actions/workflows/security-refresh.yml/badge.svg)](https://github.com/engabelal/cloudy-runner/actions/workflows/security-refresh.yml)
+[![Version Checker](https://github.com/engabelal/cloudy-runner/actions/workflows/version-checker.yml/badge.svg)](https://github.com/engabelal/cloudy-runner/actions/workflows/version-checker.yml)
 
 ---
 

@@ -1,0 +1,102 @@
+# GitHub Labels Configuration
+# Apply with: gh label create "name" --description "desc" --color "hex"
+# Or import via GitHub Settings > Labels
+
+labels:
+  # Issue Types
+  - name: bug
+    color: d73a4a
+    description: Something isn't working
+
+  - name: enhancement
+    color: a2eeef
+    description: New feature or request
+
+  - name: documentation
+    color: 0075ca
+    description: Improvements or additions to documentation
+
+  - name: question
+    color: d876e3
+    description: Further information is requested
+
+  # Priority
+  - name: priority-critical
+    color: b60205
+    description: Critical priority - immediate attention required
+
+  - name: priority-high
+    color: d93f0b
+    description: High priority
+
+  - name: priority-medium
+    color: fbca04
+    description: Medium priority
+
+  - name: priority-low
+    color: 0e8a16
+    description: Low priority
+
+  # Automation
+  - name: automated
+    color: ededed
+    description: Automated workflow
+
+  - name: security-refresh
+    color: d73a4a
+    description: Weekly security refresh
+
+  - name: version-update
+    color: "0366d6"
+    description: Tool version updates available
+
+  - name: dependencies
+    color: "0366d6"
+    description: Dependency updates
+
+  # Status
+  - name: wontfix
+    color: ffffff
+    description: This will not be worked on
+
+  - name: duplicate
+    color: cfd3d7
+    description: This issue or pull request already exists
+
+  - name: invalid
+    color: e4e669
+    description: This doesn't seem right
+
+  - name: good first issue
+    color: 7057ff
+    description: Good for newcomers
+
+  - name: help wanted
+    color: 008672
+    description: Extra attention is needed
+
+  # Architecture
+  - name: amd64
+    color: c5def5
+    description: Related to amd64/x86_64 architecture
+
+  - name: arm64
+    color: c5def5
+    description: Related to arm64/aarch64 architecture
+
+  # Tools
+  - name: terraform
+    color: 7b42bc
+    description: Related to Terraform
+
+  - name: kubernetes
+    color: 326ce5
+    description: Related to Kubernetes tools
+
+  - name: ansible
+    color: ee0000
+    description: Related to Ansible
+
+  - name: nodejs
+    color: 339933
+    description: Related to Node.js
