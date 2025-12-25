@@ -16,34 +16,48 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build & push amd64
+      - name: Load versions
         run: |
           set -a
           source versions.env
           set +a
+          echo "NODE_VERSION=$NODE_VERSION" >> $GITHUB_ENV
+          echo "TERRAFORM_VERSION=$TERRAFORM_VERSION" >> $GITHUB_ENV
+          echo "ANSIBLE_VERSION=$ANSIBLE_VERSION" >> $GITHUB_ENV
+          echo "KUBECTL_VERSION=$KUBECTL_VERSION" >> $GITHUB_ENV
+          echo "HELM_VERSION=$HELM_VERSION" >> $GITHUB_ENV
+          echo "KUSTOMIZE_VERSION=$KUSTOMIZE_VERSION" >> $GITHUB_ENV
+          echo "YQ_VERSION=$YQ_VERSION" >> $GITHUB_ENV
 
-          docker build \
-            --pull \
-            -f docker/Dockerfile.amd64 \
-            --build-arg NODE_VERSION \
-            --build-arg TERRAFORM_VERSION \
-            --build-arg ANSIBLE_VERSION \
-            --build-arg KUBECTL_VERSION \
-            --build-arg HELM_VERSION \
-            --build-arg KUSTOMIZE_VERSION \
-            --build-arg YQ_VERSION \
-            -t $IMAGE:amd64 \
-            -t $IMAGE:${GITHUB_REF_NAME}-amd64 \
-            .
-
-          docker push $IMAGE:amd64
-          docker push $IMAGE:${GITHUB_REF_NAME}-amd64
+      - name: Build & push amd64
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile.amd64
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:amd64
+            ${{ env.IMAGE }}:${{ github.ref_name }}-amd64
+          build-args: |
+            NODE_VERSION=${{ env.NODE_VERSION }}
+            TERRAFORM_VERSION=${{ env.TERRAFORM_VERSION }}
+            ANSIBLE_VERSION=${{ env.ANSIBLE_VERSION }}
+            KUBECTL_VERSION=${{ env.KUBECTL_VERSION }}
+            HELM_VERSION=${{ env.HELM_VERSION }}
+            KUSTOMIZE_VERSION=${{ env.KUSTOMIZE_VERSION }}
+            YQ_VERSION=${{ env.YQ_VERSION }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   arm64:
     runs-on: ubuntu-latest
@@ -51,31 +65,68 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build & push arm64
+      - name: Load versions
         run: |
           set -a
           source versions.env
           set +a
+          echo "NODE_VERSION=$NODE_VERSION" >> $GITHUB_ENV
+          echo "TERRAFORM_VERSION=$TERRAFORM_VERSION" >> $GITHUB_ENV
+          echo "ANSIBLE_VERSION=$ANSIBLE_VERSION" >> $GITHUB_ENV
+          echo "KUBECTL_VERSION=$KUBECTL_VERSION" >> $GITHUB_ENV
+          echo "HELM_VERSION=$HELM_VERSION" >> $GITHUB_ENV
+          echo "KUSTOMIZE_VERSION=$KUSTOMIZE_VERSION" >> $GITHUB_ENV
+          echo "YQ_VERSION=$YQ_VERSION" >> $GITHUB_ENV
 
-          docker build \
-            --pull \
-            -f docker/Dockerfile.arm64 \
-            --build-arg NODE_VERSION \
-            --build-arg TERRAFORM_VERSION \
-            --build-arg ANSIBLE_VERSION \
-            --build-arg KUBECTL_VERSION \
-            --build-arg HELM_VERSION \
-            --build-arg KUSTOMIZE_VERSION \
-            --build-arg YQ_VERSION \
-            -t $IMAGE:arm64 \
-            -t $IMAGE:${GITHUB_REF_NAME}-arm64 \
-            .
+      - name: Build & push arm64
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile.arm64
+          platforms: linux/arm64
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:arm64
+            ${{ env.IMAGE }}:${{ github.ref_name }}-arm64
+          build-args: |
+            NODE_VERSION=${{ env.NODE_VERSION }}
+            TERRAFORM_VERSION=${{ env.TERRAFORM_VERSION }}
+            ANSIBLE_VERSION=${{ env.ANSIBLE_VERSION }}
+            KUBECTL_VERSION=${{ env.KUBECTL_VERSION }}
+            HELM_VERSION=${{ env.HELM_VERSION }}
+            KUSTOMIZE_VERSION=${{ env.KUSTOMIZE_VERSION }}
+            YQ_VERSION=${{ env.YQ_VERSION }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
-          docker push $IMAGE:arm64
-          docker push $IMAGE:${GITHUB_REF_NAME}-arm64
+  manifest:
+    runs-on: ubuntu-latest
+    needs: [amd64, arm64]
+
+    steps:
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Create and push manifest for latest
+        run: |
+          docker buildx imagetools create -t ${{ env.IMAGE }}:latest \
+            ${{ env.IMAGE }}:amd64 \
+            ${{ env.IMAGE }}:arm64
+
+      - name: Create and push manifest for tag
+        run: |
+          docker buildx imagetools create -t ${{ env.IMAGE }}:${{ github.ref_name }} \
+            ${{ env.IMAGE }}:${{ github.ref_name }}-amd64 \
+            ${{ env.IMAGE }}:${{ github.ref_name }}-arm64
