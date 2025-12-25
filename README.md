@@ -26,7 +26,8 @@ docker run --rm engabelal/cloudy-runner:latest cat /etc/tool-versions.txt
 | **Infrastructure** | Terraform 1.9.8, Ansible 10.7.0 |
 | **Kubernetes** | kubectl v1.31.14, Helm v3.19.4, Kustomize v5.8.0 |
 | **Cloud CLIs** | AWS CLI v2, Azure CLI |
-| **Node.js** | Node.js 22.21.1 LTS, npm, yarn, pnpm |
+| **Containers** | Docker CLI, Docker Buildx, Docker Compose |
+| **Node.js** | Node.js 24.12.0 LTS, npm, yarn, pnpm |
 | **Utilities** | yq v4.50.1, jq, git, curl, wget, make |
 | **Base** | Ubuntu 24.04 LTS, Python 3.12 |
 
