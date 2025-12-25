@@ -1,36 +1,122 @@
+# ============================================================
+# CI Runner Image
+# Versions are injected via build arguments
+# ============================================================
 FROM ubuntu:24.04
+
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=Etc/UTC
 
-# 1. Base Utilities
+# ------------------------------------------------------------
+# Build arguments (versions come from versions.env)
+# ------------------------------------------------------------
+ARG NODE_VERSION
+ARG AWSCLI_VERSION
+ARG TERRAFORM_VERSION
+ARG KUBECTL_VERSION
+ARG HELM_VERSION
+ARG KUSTOMIZE_VERSION
+ARG YQ_VERSION
+ARG ANSIBLE_VERSION
+
+# ------------------------------------------------------------
+# Core system utilities (stable layer)
+# ------------------------------------------------------------
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates curl wget git jq unzip zip gnupg lsb-release \
-    software-properties-common make build-essential python3 python3-pip python3-venv \
+    ca-certificates \
+    curl \
+    wget \
+    git \
+    jq \
+    unzip \
+    zip \
+    gnupg \
+    lsb-release \
+    software-properties-common \
+    make \
+    build-essential \
+    python3 \
+    python3-venv \
+    python3-pip \
     && rm -rf /var/lib/apt/lists/*
 
-# 2. Docker CLI & Buildx (For DIND Support)
+# ------------------------------------------------------------
+# Docker CLI + Buildx
+# ------------------------------------------------------------
 RUN install -m 0755 -d /etc/apt/keyrings \
-    && curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc \
-    && chmod a+r /etc/apt/keyrings/docker.asc \
-    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null \
-    && apt-get update && apt-get install -y docker-ce-cli docker-buildx-plugin \
+    && curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
+       | gpg --dearmor -o /etc/apt/keyrings/docker.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
+       https://download.docker.com/linux/ubuntu \
+       $(. /etc/os-release && echo $VERSION_CODENAME) stable" \
+       > /etc/apt/sources.list.d/docker.list \
+    && apt-get update \
+    && apt-get install -y docker-ce-cli docker-buildx-plugin \
     && rm -rf /var/lib/apt/lists/*
 
-# 3. Node.js 20 LTS (For Actions Compatibility)
-RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
-    && apt-get install -y nodejs && npm install -g yarn pnpm && rm -rf /var/lib/apt/lists/*
+# ------------------------------------------------------------
+# Node.js (pinned, easy to update)
+# ------------------------------------------------------------
+RUN curl -fsSL https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz \
+    | tar -xJ -C /usr/local --strip-components=1 \
+    && npm install -g yarn pnpm
 
-# 4. Cloud & DevOps Tools (AWS, Azure, Terraform, Ansible, K8s)
-RUN curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" && unzip awscliv2.zip && ./aws/install && rm -f awscliv2.zip && rm -rf aws
-RUN curl -sL https://aka.ms/InstallAzureCLIDeb | bash
-RUN wget -O- https://apt.releases.hashicorp.com/gpg | gpg --dearmor | tee /usr/share/keyrings/hashicorp-archive-keyring.gpg > /dev/null && echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" | tee /etc/apt/sources.list.d/hashicorp.list && apt-get update && apt-get install -y terraform && rm -rf /var/lib/apt/lists/*
-RUN pip3 install --no-cache-dir --break-system-packages ansible passlib
-RUN curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" && install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl && rm kubectl
-RUN curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-RUN curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash && mv kustomize /usr/local/bin/
-RUN wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/bin/yq && chmod +x /usr/bin/yq
+# ------------------------------------------------------------
+# AWS CLI v2
+# ------------------------------------------------------------
+RUN curl -fsSL \
+    https://awscli.amazonaws.com/awscli-exe-linux-x86_64-${AWSCLI_VERSION}.zip \
+    -o awscliv2.zip \
+    && unzip awscliv2.zip \
+    && ./aws/install \
+    && rm -rf aws awscliv2.zip
 
-# Cleanup
-RUN apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+# ------------------------------------------------------------
+# Terraform
+# ------------------------------------------------------------
+RUN curl -fsSL \
+    https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip \
+    -o terraform.zip \
+    && unzip terraform.zip -d /usr/local/bin \
+    && rm terraform.zip
+
+# ------------------------------------------------------------
+# Kubernetes tools
+# ------------------------------------------------------------
+RUN curl -fsSL \
+    https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl \
+    -o /usr/local/bin/kubectl \
+    && chmod +x /usr/local/bin/kubectl
+
+RUN curl -fsSL \
+    https://get.helm.sh/helm-${HELM_VERSION}-linux-amd64.tar.gz \
+    | tar -xz \
+    && mv linux-amd64/helm /usr/local/bin/helm \
+    && rm -rf linux-amd64
+
+RUN curl -fsSL \
+    https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2F${KUSTOMIZE_VERSION}/kustomize_linux_amd64.tar.gz \
+    | tar -xz \
+    && mv kustomize /usr/local/bin/kustomize
+
+RUN curl -fsSL \
+    https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64 \
+    -o /usr/local/bin/yq \
+    && chmod +x /usr/local/bin/yq
+
+# ------------------------------------------------------------
+# Ansible (isolated venv)
+# ------------------------------------------------------------
+RUN python3 -m venv /opt/ansible \
+    && /opt/ansible/bin/pip install --no-cache-dir \
+       ansible==${ANSIBLE_VERSION} passlib
+
+ENV PATH="/opt/ansible/bin:${PATH}"
+
+# ------------------------------------------------------------
+# Final cleanup
+# ------------------------------------------------------------
+RUN apt-get clean && rm -rf /tmp/* /var/tmp/*
+
 WORKDIR /workspace
-CMD ["/bin/bash", "-c", "echo '✅ CloudyCode Runner Ready!'"]
+CMD ["/bin/bash"]
