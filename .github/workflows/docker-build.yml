@@ -20,64 +20,21 @@ jobs:
       packages: write
 
     steps:
-      # -------------------------
-      # Checkout source
-      # -------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # -------------------------
-      # Make build script executable
-      # -------------------------
-      - name: Make build script executable
-        run: chmod +x build.sh
-
-      # -------------------------
-      # Load versions.env into GITHUB_ENV
-      # Strip comments and empty lines (REQUIRED)
-      # -------------------------
-      - name: Load tool versions
-        run: |
-          grep -v '^#' versions.env | grep -v '^$' >> "$GITHUB_ENV"
-
-      # -------------------------
-      # Debug loaded versions (safe to remove later)
-      # -------------------------
-      - name: Debug loaded versions
-        run: |
-          echo "NODE_VERSION=$NODE_VERSION"
-          echo "AWSCLI_VERSION=$AWSCLI_VERSION"
-          echo "TERRAFORM_VERSION=$TERRAFORM_VERSION"
-          echo "KUBECTL_VERSION=$KUBECTL_VERSION"
-          echo "HELM_VERSION=$HELM_VERSION"
-          echo "KUSTOMIZE_VERSION=$KUSTOMIZE_VERSION"
-          echo "YQ_VERSION=$YQ_VERSION"
-          echo "ANSIBLE_VERSION=$ANSIBLE_VERSION"
-
-      # -------------------------
-      # Enable QEMU (for arm64)
-      # -------------------------
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
-      # -------------------------
-      # Enable Docker Buildx
-      # -------------------------
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # -------------------------
-      # Login to Docker Hub
-      # -------------------------
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # -------------------------
-      # Generate tags and labels
-      # -------------------------
       - name: Extract Docker metadata
         id: meta
         uses: docker/metadata-action@v5
@@ -87,30 +44,17 @@ jobs:
             type=ref,event=tag
             type=raw,value=latest,enable={{is_default_branch}}
 
-      # -------------------------
-      # Build and push image (multi-arch)
-      # -------------------------
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
           context: .
           file: Dockerfile
           push: true
+          pull: true
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-
-          # Cache configuration
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
-          # Build arguments injected from versions.env
           build-args: |
-            NODE_VERSION=${{ env.NODE_VERSION }}
-            AWSCLI_VERSION=${{ env.AWSCLI_VERSION }}
-            TERRAFORM_VERSION=${{ env.TERRAFORM_VERSION }}
-            KUBECTL_VERSION=${{ env.KUBECTL_VERSION }}
-            HELM_VERSION=${{ env.HELM_VERSION }}
-            KUSTOMIZE_VERSION=${{ env.KUSTOMIZE_VERSION }}
-            YQ_VERSION=${{ env.YQ_VERSION }}
-            ANSIBLE_VERSION=${{ env.ANSIBLE_VERSION }}
+            GITHUB_TOKEN=${{ github.token }}
