@@ -12,30 +12,63 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: grep -v '^#' versions.env >> $GITHUB_ENV
-      - uses: docker/login-action@v3
+
+      # Load versions safely
+      - name: Load versions
+        run: |
+          grep -v '^#' versions.env >> "$GITHUB_ENV"
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - run: |
+
+      - name: Build & push amd64
+        run: |
           docker build \
+            --pull \
             -f docker/Dockerfile.amd64 \
+            --build-arg NODE_VERSION=$NODE_VERSION \
+            --build-arg TERRAFORM_VERSION=$TERRAFORM_VERSION \
+            --build-arg ANSIBLE_VERSION=$ANSIBLE_VERSION \
+            --build-arg KUBECTL_VERSION=$KUBECTL_VERSION \
+            --build-arg HELM_VERSION=$HELM_VERSION \
+            --build-arg KUSTOMIZE_VERSION=$KUSTOMIZE_VERSION \
+            --build-arg YQ_VERSION=$YQ_VERSION \
             -t $IMAGE:amd64 \
-            $(printf -- '--build-arg %s ' $(cat versions.env | grep -v '^#')) .
+            .
+
           docker push $IMAGE:amd64
 
   arm64:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: grep -v '^#' versions.env >> $GITHUB_ENV
-      - uses: docker/login-action@v3
+
+      - name: Load versions
+        run: |
+          grep -v '^#' versions.env >> "$GITHUB_ENV"
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - run: |
+
+      - name: Build & push arm64
+        run: |
           docker build \
+            --pull \
             -f docker/Dockerfile.arm64 \
+            --build-arg NODE_VERSION=$NODE_VERSION \
+            --build-arg TERRAFORM_VERSION=$TERRAFORM_VERSION \
+            --build-arg ANSIBLE_VERSION=$ANSIBLE_VERSION \
+            --build-arg KUBECTL_VERSION=$KUBECTL_VERSION \
+            --build-arg HELM_VERSION=$HELM_VERSION \
+            --build-arg KUSTOMIZE_VERSION=$KUSTOMIZE_VERSION \
+            --build-arg YQ_VERSION=$YQ_VERSION \
             -t $IMAGE:arm64 \
-            $(printf -- '--build-arg %s ' $(cat versions.env | grep -v '^#')) .
+            .
+
           docker push $IMAGE:arm64
