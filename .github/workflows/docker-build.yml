@@ -27,22 +27,21 @@ jobs:
         uses: actions/checkout@v4
 
       # -------------------------
-      # Make build script executable (for local use / consistency)
+      # Make build script executable
       # -------------------------
       - name: Make build script executable
         run: chmod +x build.sh
 
       # -------------------------
-      # Load versions.env into GitHub Actions environment
-      # THIS IS THE CRITICAL FIX
+      # Load versions.env into GITHUB_ENV
+      # Strip comments and empty lines (REQUIRED)
       # -------------------------
       - name: Load tool versions
         run: |
-          cat versions.env >> $GITHUB_ENV
+          grep -v '^#' versions.env | grep -v '^$' >> "$GITHUB_ENV"
 
       # -------------------------
-      # (Optional) Debug versions
-      # Remove later if you want
+      # Debug loaded versions (safe to remove later)
       # -------------------------
       - name: Debug loaded versions
         run: |
@@ -101,11 +100,11 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
-          # Cache
+          # Cache configuration
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-          # Build arguments (from versions.env via GITHUB_ENV)
+          # Build arguments injected from versions.env
           build-args: |
             NODE_VERSION=${{ env.NODE_VERSION }}
             AWSCLI_VERSION=${{ env.AWSCLI_VERSION }}
