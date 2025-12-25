@@ -1,8 +1,6 @@
 FROM ubuntu:24.04
 
-ENV DEBIAN_FRONTEND=noninteractive
-ENV TZ=Etc/UTC
-
+# Build arguments
 ARG NODE_VERSION
 ARG TERRAFORM_VERSION
 ARG ANSIBLE_VERSION
@@ -10,6 +8,17 @@ ARG KUBECTL_VERSION
 ARG HELM_VERSION
 ARG KUSTOMIZE_VERSION
 ARG YQ_VERSION
+
+# OCI Labels
+LABEL org.opencontainers.image.title="Cloudy Runner" \
+      org.opencontainers.image.description="Multi-tool CI/CD runner image with DevOps tools (amd64)" \
+      org.opencontainers.image.vendor="engabelal" \
+      org.opencontainers.image.source="https://github.com/engabelal/cloudy-runner" \
+      org.opencontainers.image.licenses="MIT" \
+      maintainer="Ahmed Belal <eng.abelal@gmail.com>"
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=Etc/UTC
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates curl wget git jq unzip zip gnupg \
@@ -49,8 +58,9 @@ RUN curl -fsSL \
  && rm -rf linux-amd64
 
 # Kustomize
-RUN curl -fsSL \
- https://github.com/kubernetes-sigs/kustomize/releases/download/${KUSTOMIZE_VERSION}/kustomize_linux_amd64.tar.gz \
+RUN KUSTOMIZE_VER=$(echo ${KUSTOMIZE_VERSION} | cut -d'/' -f2) \
+ && curl -fsSL \
+ https://github.com/kubernetes-sigs/kustomize/releases/download/${KUSTOMIZE_VERSION}/kustomize_${KUSTOMIZE_VER}_linux_amd64.tar.gz \
  | tar -xz \
  && mv kustomize /usr/local/bin/kustomize
 
@@ -66,6 +76,27 @@ RUN python3 -m venv /opt/ansible \
     ansible==${ANSIBLE_VERSION} passlib
 
 ENV PATH="/opt/ansible/bin:${PATH}"
+
+# Verify installations and create version info
+RUN echo "=== Installed Tool Versions ===" > /etc/tool-versions.txt \
+ && echo "Node.js: $(node --version)" >> /etc/tool-versions.txt \
+ && echo "npm: $(npm --version)" >> /etc/tool-versions.txt \
+ && echo "yarn: $(yarn --version)" >> /etc/tool-versions.txt \
+ && echo "pnpm: $(pnpm --version)" >> /etc/tool-versions.txt \
+ && echo "AWS CLI: $(aws --version)" >> /etc/tool-versions.txt \
+ && echo "Terraform: $(terraform version -json | jq -r .terraform_version)" >> /etc/tool-versions.txt \
+ && echo "kubectl: $(kubectl version --client -o json | jq -r .clientVersion.gitVersion)" >> /etc/tool-versions.txt \
+ && echo "Helm: $(helm version --short)" >> /etc/tool-versions.txt \
+ && echo "Kustomize: $(kustomize version --short)" >> /etc/tool-versions.txt \
+ && echo "yq: $(yq --version)" >> /etc/tool-versions.txt \
+ && echo "Ansible: $(ansible --version | head -n1)" >> /etc/tool-versions.txt \
+ && cat /etc/tool-versions.txt
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD [ -x /usr/local/bin/terraform ] && \
+      [ -x /usr/local/bin/kubectl ] && \
+      [ -x /usr/local/bin/helm ] || exit 1
 
 WORKDIR /workspace
 CMD ["/bin/bash"]
