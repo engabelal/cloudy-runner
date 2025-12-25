@@ -1,141 +1,175 @@
 # ============================================================
-# CI Runner Image
-# Fully multi-arch safe (amd64 / arm64)
-# All versions injected via build args
+# CI Runner Image. Latest at build time. Multi arch (amd64, arm64)
 # ============================================================
 FROM ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=Etc/UTC
 
-# ------------------------------------------------------------
-# Build arguments (from versions.env)
-# ------------------------------------------------------------
-ARG NODE_VERSION
-ARG AWSCLI_VERSION
-ARG TERRAFORM_VERSION
-ARG KUBECTL_VERSION
-ARG HELM_VERSION
-ARG KUSTOMIZE_VERSION
-ARG YQ_VERSION
-ARG ANSIBLE_VERSION
-
-# Provided automatically by Docker Buildx
+# Buildx provides this automatically
 ARG TARGETARCH
 
+# Optional. Avoid GitHub API rate limits in CI
+ARG GITHUB_TOKEN
+
+SHELL ["/bin/bash", "-euxo", "pipefail", "-c"]
+
 # ------------------------------------------------------------
-# Core system utilities
+# Base utilities
 # ------------------------------------------------------------
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates \
-    curl \
-    wget \
-    git \
-    jq \
-    unzip \
-    zip \
-    gnupg \
-    lsb-release \
-    software-properties-common \
-    make \
-    build-essential \
-    python3 \
-    python3-venv \
-    python3-pip \
-    xz-utils \
+    ca-certificates curl wget git jq unzip zip gnupg lsb-release \
+    software-properties-common make build-essential \
+    python3 python3-venv python3-pip \
+    xz-utils tar \
     && rm -rf /var/lib/apt/lists/*
 
 # ------------------------------------------------------------
-# Docker CLI + Buildx
+# Docker CLI + Buildx plugin
 # ------------------------------------------------------------
 RUN install -m 0755 -d /etc/apt/keyrings \
-    && curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
-       | gpg --dearmor -o /etc/apt/keyrings/docker.gpg \
-    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
-       https://download.docker.com/linux/ubuntu \
-       $(. /etc/os-release && echo $VERSION_CODENAME) stable" \
-       > /etc/apt/sources.list.d/docker.list \
-    && apt-get update \
-    && apt-get install -y docker-ce-cli docker-buildx-plugin \
-    && rm -rf /var/lib/apt/lists/*
+  && curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
+     | gpg --dearmor -o /etc/apt/keyrings/docker.gpg \
+  && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
+     https://download.docker.com/linux/ubuntu \
+     $(. /etc/os-release && echo $VERSION_CODENAME) stable" \
+     > /etc/apt/sources.list.d/docker.list \
+  && apt-get update \
+  && apt-get install -y docker-ce-cli docker-buildx-plugin \
+  && rm -rf /var/lib/apt/lists/*
 
 # ------------------------------------------------------------
-# Node.js (multi-arch with correct naming)
-# Docker: amd64 | arm64
-# Node:   x64   | arm64
+# Helpers. GitHub API headers
 # ------------------------------------------------------------
-RUN if [ "${TARGETARCH}" = "amd64" ]; then NODE_ARCH="x64"; \
-    elif [ "${TARGETARCH}" = "arm64" ]; then NODE_ARCH="arm64"; \
-    else echo "Unsupported architecture: ${TARGETARCH}" && exit 1; fi \
-    && curl -fsSL \
-       https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${NODE_ARCH}.tar.xz \
-    | tar -xJ -C /usr/local --strip-components=1 \
-    && npm install -g yarn pnpm
+RUN cat >/usr/local/bin/gh_api_get <<'EOF' \
+  && chmod +x /usr/local/bin/gh_api_get
+#!/usr/bin/env bash
+set -euo pipefail
+url="$1"
+if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+  curl -fsSL \
+    -H "Accept: application/vnd.github+json" \
+    -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+    "$url"
+else
+  curl -fsSL \
+    -H "Accept: application/vnd.github+json" \
+    "$url"
+fi
+EOF
 
 # ------------------------------------------------------------
-# AWS CLI v2 (multi-arch)
+# Node.js. Latest LTS from dist/index.json. With SHA256 verify
+# Node arch naming: amd64=>x64. arm64=>arm64
 # ------------------------------------------------------------
-RUN curl -fsSL \
-    https://awscli.amazonaws.com/awscli-exe-linux-${TARGETARCH}-${AWSCLI_VERSION}.zip \
-    -o awscliv2.zip \
-    && unzip awscliv2.zip \
-    && ./aws/install \
-    && rm -rf aws awscliv2.zip
+RUN if [[ "${TARGETARCH}" == "amd64" ]]; then NODE_ARCH="x64"; \
+    elif [[ "${TARGETARCH}" == "arm64" ]]; then NODE_ARCH="arm64"; \
+    else echo "Unsupported TARGETARCH=${TARGETARCH}" && exit 1; fi \
+  && NODE_VER="$(curl -fsSL https://nodejs.org/dist/index.json \
+      | jq -r '[.[] | select(.lts != false)] | .[0].version')" \
+  && NODE_VER_NO_V="${NODE_VER#v}" \
+  && NODE_TGZ="node-v${NODE_VER_NO_V}-linux-${NODE_ARCH}.tar.xz" \
+  && curl -fsSL "https://nodejs.org/dist/${NODE_VER}/${NODE_TGZ}" -o "/tmp/${NODE_TGZ}" \
+  && curl -fsSL "https://nodejs.org/dist/${NODE_VER}/SHASUMS256.txt" -o /tmp/SHASUMS256.txt \
+  && grep " ${NODE_TGZ}$" /tmp/SHASUMS256.txt | sha256sum -c - \
+  && tar -xJ -f "/tmp/${NODE_TGZ}" -C /usr/local --strip-components=1 \
+  && rm -f "/tmp/${NODE_TGZ}" /tmp/SHASUMS256.txt \
+  && npm install -g yarn pnpm
 
 # ------------------------------------------------------------
-# Terraform (multi-arch)
+# AWS CLI v2. Latest. Correct official URLs. Multi arch mapping
+# Docker: amd64|arm64. AWS: x86_64|aarch64
 # ------------------------------------------------------------
-RUN curl -fsSL \
-    https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_${TARGETARCH}.zip \
-    -o terraform.zip \
-    && unzip terraform.zip -d /usr/local/bin \
-    && rm terraform.zip
+RUN if [[ "${TARGETARCH}" == "amd64" ]]; then AWS_ARCH="x86_64"; \
+    elif [[ "${TARGETARCH}" == "arm64" ]]; then AWS_ARCH="aarch64"; \
+    else echo "Unsupported TARGETARCH=${TARGETARCH}" && exit 1; fi \
+  && curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-${AWS_ARCH}.zip" -o /tmp/awscliv2.zip \
+  && unzip /tmp/awscliv2.zip -d /tmp \
+  && /tmp/aws/install \
+  && rm -rf /tmp/aws /tmp/awscliv2.zip
 
 # ------------------------------------------------------------
-# kubectl (already multi-arch)
+# Terraform. Latest stable from GitHub releases list
+# Pull first non prerelease. Then pick correct linux_${TARGETARCH}.zip asset
 # ------------------------------------------------------------
-RUN curl -fsSL \
-    https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${TARGETARCH}/kubectl \
-    -o /usr/local/bin/kubectl \
-    && chmod +x /usr/local/bin/kubectl
+RUN TF_JSON="$(gh_api_get https://api.github.com/repos/hashicorp/terraform/releases)" \
+  && TF_TAG="$(echo "${TF_JSON}" | jq -r '[.[] | select(.prerelease==false and .draft==false)][0].tag_name')" \
+  && TF_REL="$(gh_api_get "https://api.github.com/repos/hashicorp/terraform/releases/tags/${TF_TAG}")" \
+  && TF_URL="$(echo "${TF_REL}" | jq -r --arg arch "${TARGETARCH}" \
+      '.assets[]
+       | select(.name | test("^terraform_.*_linux_"+$arch+"\\.zip$"))
+       | .browser_download_url' | head -n1)" \
+  && [[ -n "${TF_URL}" ]] \
+  && curl -fsSL "${TF_URL}" -o /tmp/terraform.zip \
+  && unzip /tmp/terraform.zip -d /usr/local/bin \
+  && rm -f /tmp/terraform.zip
 
 # ------------------------------------------------------------
-# Helm (multi-arch)
+# kubectl. Latest stable from stable.txt. With SHA256 verify
 # ------------------------------------------------------------
-RUN curl -fsSL \
-    https://get.helm.sh/helm-${HELM_VERSION}-linux-${TARGETARCH}.tar.gz \
-    | tar -xz \
-    && mv linux-${TARGETARCH}/helm /usr/local/bin/helm \
-    && rm -rf linux-${TARGETARCH}
+RUN KUBECTL_VER="$(curl -fsSL https://dl.k8s.io/release/stable.txt)" \
+  && curl -fsSL "https://dl.k8s.io/release/${KUBECTL_VER}/bin/linux/${TARGETARCH}/kubectl" -o /usr/local/bin/kubectl \
+  && curl -fsSL "https://dl.k8s.io/release/${KUBECTL_VER}/bin/linux/${TARGETARCH}/kubectl.sha256" -o /tmp/kubectl.sha256 \
+  && echo "$(cat /tmp/kubectl.sha256)  /usr/local/bin/kubectl" | sha256sum -c - \
+  && chmod +x /usr/local/bin/kubectl \
+  && rm -f /tmp/kubectl.sha256
 
 # ------------------------------------------------------------
-# Kustomize (multi-arch, correct tag format)
-# Example tag: kustomize/v5.4.2
+# Helm. Latest from GitHub releases latest. Pick linux-${TARGETARCH}.tar.gz
 # ------------------------------------------------------------
-RUN curl -fsSL \
-    https://github.com/kubernetes-sigs/kustomize/releases/download/${KUSTOMIZE_VERSION}/kustomize_linux_${TARGETARCH}.tar.gz \
-    | tar -xz \
-    && mv kustomize /usr/local/bin/kustomize
+RUN HELM_REL="$(gh_api_get https://api.github.com/repos/helm/helm/releases/latest)" \
+  && HELM_URL="$(echo "${HELM_REL}" | jq -r --arg arch "${TARGETARCH}" \
+      '.assets[]
+       | select(.name | test("^helm-.*-linux-"+$arch+"\\.tar\\.gz$"))
+       | .browser_download_url' | head -n1)" \
+  && [[ -n "${HELM_URL}" ]] \
+  && curl -fsSL "${HELM_URL}" -o /tmp/helm.tgz \
+  && tar -xzf /tmp/helm.tgz -C /tmp \
+  && mv "/tmp/linux-${TARGETARCH}/helm" /usr/local/bin/helm \
+  && rm -rf /tmp/helm.tgz "/tmp/linux-${TARGETARCH}"
 
 # ------------------------------------------------------------
-# yq (multi-arch)
+# Kustomize. Latest from GitHub releases latest. Asset name differs across versions
+# We select any tar.gz that contains linux_${TARGETARCH} and starts with kustomize
 # ------------------------------------------------------------
-RUN curl -fsSL \
-    https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_${TARGETARCH} \
-    -o /usr/local/bin/yq \
-    && chmod +x /usr/local/bin/yq
+RUN KUS_REL="$(gh_api_get https://api.github.com/repos/kubernetes-sigs/kustomize/releases/latest)" \
+  && KUS_URL="$(echo "${KUS_REL}" | jq -r --arg arch "${TARGETARCH}" \
+      '.assets[]
+       | select(.name | test("^kustomize.*linux_"+$arch+".*\\.tar\\.gz$"))
+       | .browser_download_url' | head -n1)" \
+  && [[ -n "${KUS_URL}" ]] \
+  && curl -fsSL "${KUS_URL}" -o /tmp/kustomize.tgz \
+  && tar -xzf /tmp/kustomize.tgz -C /tmp \
+  && mv /tmp/kustomize /usr/local/bin/kustomize \
+  && chmod +x /usr/local/bin/kustomize \
+  && rm -f /tmp/kustomize.tgz
 
 # ------------------------------------------------------------
-# Ansible (isolated venv, no system Python pollution)
+# yq. Latest from GitHub releases latest. Asset yq_linux_${TARGETARCH}
+# ------------------------------------------------------------
+RUN YQ_REL="$(gh_api_get https://api.github.com/repos/mikefarah/yq/releases/latest)" \
+  && YQ_URL="$(echo "${YQ_REL}" | jq -r --arg arch "${TARGETARCH}" \
+      '.assets[]
+       | select(.name == ("yq_linux_"+$arch))
+       | .browser_download_url' | head -n1)" \
+  && [[ -n "${YQ_URL}" ]] \
+  && curl -fsSL "${YQ_URL}" -o /usr/local/bin/yq \
+  && chmod +x /usr/local/bin/yq
+
+# ------------------------------------------------------------
+# Azure CLI. Latest from Microsoft install script
+# ------------------------------------------------------------
+RUN curl -fsSL https://aka.ms/InstallAzureCLIDeb | bash
+
+# ------------------------------------------------------------
+# Ansible. Latest from pip. Isolated venv
 # ------------------------------------------------------------
 RUN python3 -m venv /opt/ansible \
-    && /opt/ansible/bin/pip install --no-cache-dir \
-       ansible==${ANSIBLE_VERSION} passlib
-
+  && /opt/ansible/bin/pip install --no-cache-dir ansible passlib
 ENV PATH="/opt/ansible/bin:${PATH}"
 
 # ------------------------------------------------------------
-# Final cleanup
+# Cleanup
 # ------------------------------------------------------------
 RUN apt-get clean && rm -rf /tmp/* /var/tmp/*
 
