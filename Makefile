@@ -108,6 +108,7 @@ run: ## Run interactive shell in container
 	fi; \
 	docker run -it --rm \
 		-v $$(pwd):/workspace \
+		-v /var/run/docker.sock:/var/run/docker.sock \
 		-w /workspace \
 		$$IMAGE /bin/bash
 

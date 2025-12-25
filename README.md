@@ -85,6 +85,7 @@ pipeline {
 ```bash
 docker run --rm \
   -v $(pwd):/workspace \
+  -v /var/run/docker.sock:/var/run/docker.sock \
   -v ~/.aws:/root/.aws:ro \
   -w /workspace \
   engabelal/cloudy-runner:latest \
