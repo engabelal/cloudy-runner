@@ -8,7 +8,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=Etc/UTC
 
 # ------------------------------------------------------------
-# Build arguments (versions come from versions.env)
+# Build arguments (from versions.env)
 # ------------------------------------------------------------
 ARG NODE_VERSION
 ARG AWSCLI_VERSION
@@ -20,7 +20,7 @@ ARG YQ_VERSION
 ARG ANSIBLE_VERSION
 
 # ------------------------------------------------------------
-# Core system utilities (stable layer)
+# Core system utilities
 # ------------------------------------------------------------
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
@@ -55,7 +55,7 @@ RUN install -m 0755 -d /etc/apt/keyrings \
     && rm -rf /var/lib/apt/lists/*
 
 # ------------------------------------------------------------
-# Node.js (pinned, easy to update)
+# Node.js
 # ------------------------------------------------------------
 RUN curl -fsSL https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz \
     | tar -xJ -C /usr/local --strip-components=1 \
@@ -94,8 +94,9 @@ RUN curl -fsSL \
     && mv linux-amd64/helm /usr/local/bin/helm \
     && rm -rf linux-amd64
 
+# FIXED: correct Kustomize tag format
 RUN curl -fsSL \
-    https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2F${KUSTOMIZE_VERSION}/kustomize_linux_amd64.tar.gz \
+    https://github.com/kubernetes-sigs/kustomize/releases/download/${KUSTOMIZE_VERSION}/kustomize_linux_amd64.tar.gz \
     | tar -xz \
     && mv kustomize /usr/local/bin/kustomize
 
