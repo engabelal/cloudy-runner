@@ -15,7 +15,6 @@ jobs:
     runs-on: ubuntu-latest
     environment: cloudy-runner
 
-
     permissions:
       contents: read
       packages: write
@@ -25,10 +24,26 @@ jobs:
       # Checkout source
       # -------------------------
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       # -------------------------
-      # Enable QEMU (required for arm64)
+      # Make build script executable
+      # -------------------------
+      - name: Make build script executable
+        run: chmod +x build.sh
+
+      # -------------------------
+      # Load versions from versions.env
+      # -------------------------
+      - name: Load tool versions
+        run: |
+          set -a
+          source ./versions.env
+          set +a
+          echo "Versions loaded"
+
+      # -------------------------
+      # Enable QEMU (for arm64)
       # -------------------------
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -61,7 +76,7 @@ jobs:
             type=raw,value=latest,enable={{is_default_branch}}
 
       # -------------------------
-      # Build and push image
+      # Build and push image (multi-arch)
       # -------------------------
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
@@ -72,5 +87,18 @@ jobs:
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
+          # Cache
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+          # Build args from versions.env
+          build-args: |
+            NODE_VERSION=${{ env.NODE_VERSION }}
+            AWSCLI_VERSION=${{ env.AWSCLI_VERSION }}
+            TERRAFORM_VERSION=${{ env.TERRAFORM_VERSION }}
+            KUBECTL_VERSION=${{ env.KUBECTL_VERSION }}
+            HELM_VERSION=${{ env.HELM_VERSION }}
+            KUSTOMIZE_VERSION=${{ env.KUSTOMIZE_VERSION }}
+            YQ_VERSION=${{ env.YQ_VERSION }}
+            ANSIBLE_VERSION=${{ env.ANSIBLE_VERSION }}
