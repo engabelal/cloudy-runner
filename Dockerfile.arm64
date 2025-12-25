@@ -35,26 +35,20 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     make build-essential python3 python3-venv python3-pip xz-utils && \
     rm -rf /var/lib/apt/lists/*
 
-# Download stage - parallel downloads for speed
+# Download stage - sequential downloads for reliability
 # Using tmpfs so downloads don't persist in cache
 RUN --mount=type=tmpfs,target=/downloads \
     cd /downloads && \
-    # Node.js (arm64)
-    curl -fsSL -o node.tar.xz https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-arm64.tar.xz & \
-    # AWS CLI (aarch64)
-    curl -fsSL -o awscliv2.zip https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip & \
-    # Terraform
-    curl -fsSL -o terraform.zip https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_arm64.zip & \
-    # kubectl
-    curl -fsSL -o kubectl https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/arm64/kubectl & \
-    # Helm
-    curl -fsSL -o helm.tar.gz https://get.helm.sh/helm-${HELM_VERSION}-linux-arm64.tar.gz & \
-    # Kustomize
+    # Extract kustomize version first
     KUSTOMIZE_VER=$(echo ${KUSTOMIZE_VERSION} | cut -d'/' -f2) && \
-    curl -fsSL -o kustomize.tar.gz https://github.com/kubernetes-sigs/kustomize/releases/download/${KUSTOMIZE_VERSION}/kustomize_${KUSTOMIZE_VER}_linux_arm64.tar.gz & \
-    # yq
-    curl -fsSL -o yq https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_arm64 & \
-    wait && \
+    # Download all tools
+    curl -fsSL -o node.tar.xz https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-arm64.tar.xz && \
+    curl -fsSL -o awscliv2.zip https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip && \
+    curl -fsSL -o terraform.zip https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_arm64.zip && \
+    curl -fsSL -o kubectl https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/arm64/kubectl && \
+    curl -fsSL -o helm.tar.gz https://get.helm.sh/helm-${HELM_VERSION}-linux-arm64.tar.gz && \
+    curl -fsSL -o kustomize.tar.gz https://github.com/kubernetes-sigs/kustomize/releases/download/${KUSTOMIZE_VERSION}/kustomize_${KUSTOMIZE_VER}_linux_arm64.tar.gz && \
+    curl -fsSL -o yq https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_arm64 && \
     # Install Node.js
     tar -xJ -f node.tar.xz -C /usr/local --strip-components=1 && \
     # Install AWS CLI
