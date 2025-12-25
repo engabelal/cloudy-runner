@@ -258,16 +258,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # Ensure labels exist first
-          gh label create "security-refresh" --description "Weekly security refresh" --color "d73a4a" --force || true
-          gh label create "automated" --description "Automated workflow" --color "ededed" --force || true
+          # Create labels if they don't exist (ignore errors if they already exist)
+          gh label create "security-refresh" --description "Weekly security refresh" --color "d73a4a" 2>/dev/null || true
+          gh label create "automated" --description "Automated workflow" --color "ededed" 2>/dev/null || true
 
-          # Check if an open security issue exists
+          # Check if an open security issue exists with our title pattern
           ISSUE_NUMBER=$(gh issue list \
-            --label "security-refresh" \
             --state open \
+            --search "Weekly Security Refresh in:title" \
             --json number \
-            --jq '.[0].number')
+            --jq '.[0].number // empty')
 
           if [ -z "$ISSUE_NUMBER" ]; then
             # Create new issue only if security scan found issues
@@ -275,7 +275,8 @@ jobs:
               gh issue create \
                 --title "🔒 Weekly Security Refresh - $(date -u '+%Y-%m-%d')" \
                 --body-file security-summary.md \
-                --label "security-refresh,automated"
+                --label "security-refresh" \
+                --label "automated"
               echo "⚠️ Created security issue due to scan failures"
             else
               echo "✅ Security refresh completed successfully, no issues found"

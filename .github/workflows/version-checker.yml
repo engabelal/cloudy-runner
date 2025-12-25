@@ -175,23 +175,24 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # Ensure labels exist first
-          gh label create "version-update" --description "Tool version updates available" --color "0366d6" --force || true
-          gh label create "dependencies" --description "Dependency updates" --color "0366d6" --force || true
+          # Create labels if they don't exist (ignore errors if they already exist)
+          gh label create "version-update" --description "Tool version updates available" --color "0366d6" 2>/dev/null || true
+          gh label create "dependencies" --description "Dependency updates" --color "0366d6" 2>/dev/null || true
 
-          # Check if an open issue already exists
+          # Check if an open issue already exists with our title pattern
           ISSUE_NUMBER=$(gh issue list \
-            --label "version-update" \
             --state open \
+            --search "Tool Version Updates Available in:title" \
             --json number \
-            --jq '.[0].number')
+            --jq '.[0].number // empty')
 
           if [ -z "$ISSUE_NUMBER" ]; then
             # Create new issue
             gh issue create \
               --title "📦 Tool Version Updates Available" \
               --body-file version-report.md \
-              --label "version-update,dependencies"
+              --label "version-update" \
+              --label "dependencies"
             echo "✅ Created new version update issue"
           else
             # Update existing issue
