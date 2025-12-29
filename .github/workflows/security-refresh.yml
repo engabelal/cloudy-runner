@@ -43,7 +43,7 @@ jobs:
           echo "YQ_VERSION=$YQ_VERSION" >> $GITHUB_ENV
 
       - name: Build amd64 (no cache - fresh security patches)
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: Dockerfile.amd64
@@ -126,7 +126,7 @@ jobs:
           echo "YQ_VERSION=$YQ_VERSION" >> $GITHUB_ENV
 
       - name: Build arm64 (no cache - fresh security patches)
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: Dockerfile.arm64
