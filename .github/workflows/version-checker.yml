@@ -204,7 +204,7 @@ jobs:
           fi
 
       - name: Upload report artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: version-report
           path: version-report.md

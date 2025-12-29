@@ -86,7 +86,7 @@ jobs:
             ${{ env.IMAGE }}:amd64-security > security-report-amd64.txt || true
 
       - name: Upload security report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         if: always()
         with:
           name: security-report-amd64
@@ -169,7 +169,7 @@ jobs:
             ${{ env.IMAGE }}:arm64-security > security-report-arm64.txt || true
 
       - name: Upload security report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         if: always()
         with:
           name: security-report-arm64
